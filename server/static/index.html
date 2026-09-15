@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>splitvise</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #11150f;
+      --fg: #e8eedf;
+      --muted: #9aa58c;
+      --card: #1b2118;
+      --accent: #c6e07a;
+      --danger: #e07a7a;
+      --border: #2c3528;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f1e8;
+        --fg: #1b2118;
+        --muted: #66705c;
+        --card: #fffdf6;
+        --accent: #3d6b00;
+        --danger: #a33;
+        --border: #d9d3c2;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0 auto;
+      max-width: 42rem;
+      padding: 2rem 1.25rem 4rem;
+      font: 15px/1.5 ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    h1 { font-size: 1.4rem; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 .25rem; }
+    p.lead { color: var(--muted); margin: 0 0 1.5rem; }
+    label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: .35rem; }
+    input[type=password], input[type=text] {
+      width: 100%;
+      padding: .6rem .7rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--fg);
+      font: inherit;
+    }
+    button {
+      font: inherit;
+      border: 0;
+      border-radius: 8px;
+      padding: .5rem .9rem;
+      background: var(--accent);
+      color: #111;
+      cursor: pointer;
+    }
+    button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+    button.danger { background: var(--danger); color: #fff; }
+    .row { display: flex; gap: .5rem; align-items: end; margin: .75rem 0 1.5rem; }
+    .row > div { flex: 1; }
+    .err { color: var(--danger); font-size: .9rem; min-height: 1.2em; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li.clip {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: .75rem;
+    }
+    .meta { color: var(--muted); font-size: .85rem; display: flex; flex-wrap: wrap; gap: .4rem 1rem; }
+    audio { width: 100%; margin: .7rem 0 .4rem; }
+    .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; color: var(--muted); }
+    header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>splitvise</h1>
+      <p class="lead">voice inbox for split-bill annotations</p>
+    </div>
+    <button class="ghost" id="logout" hidden>clear token</button>
+  </header>
+
+  <div id="gate">
+    <label for="token">bearer token</label>
+    <div class="row">
+      <div><input id="token" type="password" autocomplete="off" spellcheck="false"></div>
+      <button id="save">open</button>
+    </div>
+  </div>
+  <p class="err" id="err"></p>
+  <ul id="list"></ul>
+  <p id="more-wrap" hidden><button class="ghost" id="more">load more</button></p>
+
+  <script>
+    const tokenKey = "splitvise.token";
+    const $ = (id) => document.getElementById(id);
+    let cursor = null;
+
+    function token() { return sessionStorage.getItem(tokenKey) || ""; }
+
+    function setError(msg) { $("err").textContent = msg || ""; }
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ "Authorization": "Bearer " + token() }, opts.headers || {});
+      const res = await fetch(path, Object.assign({}, opts, { headers }));
+      if (res.status === 401) {
+        sessionStorage.removeItem(tokenKey);
+        renderGate();
+        throw new Error("unauthorized");
+      }
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      return res;
+    }
+
+    function renderGate() {
+      const has = !!token();
+      $("gate").hidden = has;
+      $("logout").hidden = !has;
+      if (has) { cursor = null; $("list").innerHTML = ""; load(true); }
+    }
+
+    function fmt(ts) {
+      if (!ts) return "";
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return ts;
+      return d.toLocaleString();
+    }
+
+    async function playInto(audioEl, id) {
+      const res = await api("v1/clips/" + id + "/audio");
+      const blob = await res.blob();
+      const prev = audioEl.src;
+      audioEl.src = URL.createObjectURL(blob);
+      if (prev) URL.revokeObjectURL(prev);
+    }
+
+    function clipItem(c) {
+      const li = document.createElement("li");
+      li.className = "clip";
+      const loc = (c.lat != null && c.lng != null)
+        ? (c.lat.toFixed(5) + ", " + c.lng.toFixed(5))
+        : "no location";
+      const dur = c.duration_ms != null ? (c.duration_ms / 1000).toFixed(1) + "s" : "";
+      li.innerHTML =
+        '<div class="meta">' +
+          "<span>" + fmt(c.recorded_at || c.created_at) + "</span>" +
+          "<span>" + loc + "</span>" +
+          "<span>" + dur + "</span>" +
+          "<span>" + (c.bytes || 0) + " B</span>" +
+        "</div>" +
+        '<audio controls preload="none"></audio>' +
+        '<div class="id">' + c.id + "</div>" +
+        '<div class="row" style="margin:0.6rem 0 0">' +
+          '<button class="ghost del">delete</button>' +
+        "</div>";
+      const audio = li.querySelector("audio");
+      audio.addEventListener("play", () => {
+        if (!audio.src) playInto(audio, c.id).catch((e) => setError(e.message));
+      }, { once: true });
+      li.querySelector(".del").addEventListener("click", async () => {
+        if (!confirm("delete this clip?")) return;
+        try {
+          await api("v1/clips/" + c.id, { method: "DELETE" });
+          li.remove();
+        } catch (e) { setError(e.message); }
+      });
+      return li;
+    }
+
+    async function load(reset) {
+      setError("");
+      const q = new URLSearchParams({ limit: "20" });
+      if (!reset && cursor) q.set("cursor", cursor);
+      try {
+        const res = await api("v1/clips?" + q.toString());
+        const body = await res.json();
+        if (reset) $("list").innerHTML = "";
+        for (const c of body.clips) $("list").appendChild(clipItem(c));
+        cursor = body.next;
+        $("more-wrap").hidden = !cursor;
+        if (reset && body.clips.length === 0) setError("no clips yet");
+      } catch (e) { setError(e.message); }
+    }
+
+    $("save").addEventListener("click", () => {
+      const v = $("token").value.trim();
+      if (!v) return;
+      sessionStorage.setItem(tokenKey, v);
+      $("token").value = "";
+      renderGate();
+    });
+    $("token").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("save").click();
+    });
+    $("logout").addEventListener("click", () => {
+      sessionStorage.removeItem(tokenKey);
+      $("list").innerHTML = "";
+      renderGate();
+    });
+    $("more").addEventListener("click", () => load(false));
+    renderGate();
+  </script>
+</body>
+</html>
