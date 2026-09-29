@@ -147,3 +147,5 @@ def test_index_served(client):
     r = c.get("/")
     assert r.status_code == 200
     assert b"splitvise" in r.content
+    assert b"loadAudio" in r.content
+    assert b'addEventListener("play"' not in r.content

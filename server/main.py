@@ -151,7 +151,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(STATIC / "index.html")
+        return FileResponse(
+            STATIC / "index.html",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.post("/v1/clips", status_code=201)
     async def upload_clip(
@@ -282,10 +285,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             plaintext = crypto.decrypt(settings.psk, path.read_bytes(), aad=clip_id.encode())
         except Exception as exc:
             raise HTTPException(500, "failed to decrypt audio") from exc
+        media = row["content_type"] or "audio/mp4"
+        if media in {"audio/m4a", "audio/x-m4a", "audio/aac", "application/octet-stream"}:
+            media = "audio/mp4"
         return Response(
             content=plaintext,
-            media_type=row["content_type"],
-            headers={"Content-Length": str(len(plaintext))},
+            media_type=media,
+            headers={
+                "Content-Length": str(len(plaintext)),
+                "Content-Disposition": f'inline; filename="{clip_id}.m4a"',
+                "Cache-Control": "private, no-store",
+                "Accept-Ranges": "none",
+            },
         )
 
     @app.delete("/v1/clips/{clip_id}", status_code=204)

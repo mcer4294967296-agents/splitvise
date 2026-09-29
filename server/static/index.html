@@ -134,12 +134,17 @@
       return d.toLocaleString();
     }
 
-    async function playInto(audioEl, id) {
+    async function loadAudio(audioEl, id) {
       const res = await api("v1/clips/" + id + "/audio");
-      const blob = await res.blob();
-      const prev = audioEl.src;
-      audioEl.src = URL.createObjectURL(blob);
-      if (prev) URL.revokeObjectURL(prev);
+      const buf = await res.arrayBuffer();
+      let type = (res.headers.get("content-type") || "audio/mp4").split(";")[0].trim();
+      if (!type || type === "application/octet-stream") type = "audio/mp4";
+      const blob = new Blob([buf], { type: type });
+      const url = URL.createObjectURL(blob);
+      if (audioEl.dataset.blobUrl) URL.revokeObjectURL(audioEl.dataset.blobUrl);
+      audioEl.dataset.blobUrl = url;
+      audioEl.src = url;
+      audioEl.load();
     }
 
     function clipItem(c) {
@@ -156,18 +161,52 @@
           "<span>" + dur + "</span>" +
           "<span>" + (c.bytes || 0) + " B</span>" +
         "</div>" +
-        '<audio controls preload="none"></audio>' +
+        '<div class="row" style="margin:0.7rem 0 0.2rem">' +
+          '<button type="button" class="play">play</button>' +
+        "</div>" +
+        '<audio controls preload="none" hidden></audio>' +
         '<div class="id">' + c.id + "</div>" +
         '<div class="row" style="margin:0.6rem 0 0">' +
-          '<button class="ghost del">delete</button>' +
+          '<button type="button" class="ghost del">delete</button>' +
         "</div>";
       const audio = li.querySelector("audio");
-      audio.addEventListener("play", () => {
-        if (!audio.src) playInto(audio, c.id).catch((e) => setError(e.message));
-      }, { once: true });
+      const playBtn = li.querySelector(".play");
+      playBtn.addEventListener("click", async () => {
+        setError("");
+        playBtn.disabled = true;
+        try {
+          if (!audio.dataset.blobUrl) {
+            playBtn.textContent = "loading…";
+            await loadAudio(audio, c.id);
+            audio.hidden = false;
+          }
+          if (audio.paused) {
+            await audio.play();
+            playBtn.textContent = "pause";
+          } else {
+            audio.pause();
+            playBtn.textContent = "play";
+          }
+        } catch (e) {
+          setError(e.message);
+          playBtn.textContent = "play";
+        } finally {
+          playBtn.disabled = false;
+        }
+      });
+      audio.addEventListener("ended", () => { playBtn.textContent = "play"; });
+      audio.addEventListener("pause", () => {
+        if (audio.ended) return;
+        if (audio.currentTime > 0 && audio.currentTime < (audio.duration || Infinity)) {
+          playBtn.textContent = "play";
+        }
+      });
+      audio.addEventListener("playing", () => { playBtn.textContent = "pause"; });
       li.querySelector(".del").addEventListener("click", async () => {
         if (!confirm("delete this clip?")) return;
         try {
+          audio.pause();
+          if (audio.dataset.blobUrl) URL.revokeObjectURL(audio.dataset.blobUrl);
           await api("v1/clips/" + c.id, { method: "DELETE" });
           li.remove();
         } catch (e) { setError(e.message); }
