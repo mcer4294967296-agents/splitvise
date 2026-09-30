@@ -148,4 +148,5 @@ def test_index_served(client):
     assert r.status_code == 200
     assert b"splitvise" in r.content
     assert b"loadAudio" in r.content
-    assert b'addEventListener("play"' not in r.content
+    assert b'class="play"' not in r.content
+    assert b"preload=\"auto\"" in r.content
