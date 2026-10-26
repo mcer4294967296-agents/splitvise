@@ -8,6 +8,7 @@ import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -88,6 +90,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         prefs = Prefs(this)
         recordings = LocalRecordings(File(filesDir, "recordings"))
         setContent {
@@ -99,7 +102,7 @@ class MainActivity : ComponentActivity() {
                     onSurface = Color.White,
                 ),
             ) {
-                Surface(Modifier.fillMaxSize(), color = Ink) {
+                Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = Ink) {
                     App()
                 }
             }
