@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -41,6 +43,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -49,12 +54,14 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private lateinit var prefs: Prefs
     private lateinit var api: Api
+    private lateinit var recordings: LocalRecordings
     private val recorder = Recorder()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         api = Api(prefs)
+        recordings = LocalRecordings(File(filesDir, "recordings"))
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
@@ -90,11 +97,14 @@ class MainActivity : ComponentActivity() {
         }.maxByOrNull { it.time }
     }
 
+    private enum class Screen { Capture, Library }
+
     @Composable
     private fun App() {
         var showSettings by remember { mutableStateOf(!prefs.configured) }
-        if (showSettings) {
-            SettingsScreen(
+        var screen by remember { mutableStateOf(Screen.Capture) }
+        when {
+            showSettings -> SettingsScreen(
                 initialUrl = prefs.serverUrl,
                 initialToken = prefs.token,
                 onSave = { url, token ->
@@ -103,8 +113,11 @@ class MainActivity : ComponentActivity() {
                     showSettings = false
                 },
             )
-        } else {
-            CaptureScreen(onOpenSettings = { showSettings = true })
+            screen == Screen.Library -> LibraryScreen(onBack = { screen = Screen.Capture })
+            else -> CaptureScreen(
+                onOpenSettings = { showSettings = true },
+                onOpenLibrary = { screen = Screen.Library },
+            )
         }
     }
 
@@ -154,7 +167,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun CaptureScreen(onOpenSettings: () -> Unit) {
+    private fun CaptureScreen(onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit) {
         var phase by remember { mutableStateOf<Phase>(Phase.Idle) }
         var tick by remember { mutableLongStateOf(0L) }
         var loc by remember { mutableStateOf<Location?>(null) }
@@ -202,6 +215,9 @@ class MainActivity : ComponentActivity() {
             when (val p = phase) {
                 Phase.Idle -> {
                     Text("tap to record. 60 second cap. no typing.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = onOpenLibrary) { Text("saved") }
+                    }
                     Button(onClick = {
                         val need = mutableListOf<String>()
                         if (ContextCompat.checkSelfPermission(
@@ -253,7 +269,6 @@ class MainActivity : ComponentActivity() {
                                             p.recordedAt,
                                         )
                                     }
-                                    p.file.delete()
                                     Phase.Done(ack.id)
                                 } catch (e: Exception) {
                                     stashOutbox(p.file)
@@ -265,7 +280,7 @@ class MainActivity : ComponentActivity() {
                 }
                 Phase.Uploading -> Text("uploading…")
                 is Phase.Done -> {
-                    Text("saved ${p.id}")
+                    Text("uploaded")
                     Button(onClick = { phase = Phase.Idle }) { Text("record another") }
                 }
                 is Phase.Err -> {
@@ -291,13 +306,81 @@ class MainActivity : ComponentActivity() {
             file.delete()
             return Phase.Err("empty recording")
         }
-        return Phase.Preview(file, duration, Instant.now())
+        val saved = recordings.save(file)
+        return Phase.Preview(saved, duration, Instant.now())
     }
 
     private fun stashOutbox(file: File) {
         val box = File(filesDir, "outbox")
         box.mkdirs()
         file.copyTo(File(box, file.name), overwrite = true)
+    }
+
+    @Composable
+    private fun LibraryScreen(onBack: () -> Unit) {
+        var files by remember { mutableStateOf(recordings.list()) }
+        var playing by remember { mutableStateOf<String?>(null) }
+        var player by remember { mutableStateOf<MediaPlayer?>(null) }
+        DisposableEffect(Unit) {
+            onDispose {
+                player?.release()
+            }
+        }
+        Column(
+            Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("saved", style = MaterialTheme.typography.headlineMedium)
+                TextButton(onClick = {
+                    player?.release()
+                    player = null
+                    onBack()
+                }) { Text("back") }
+            }
+            if (files.isEmpty()) {
+                Text("nothing saved yet")
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(files, key = { it.absolutePath }) { file ->
+                        val dur = recordings.durationMs(file)
+                        val whenSaved = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)
+                            .withZone(ZoneId.systemDefault())
+                            .format(Instant.ofEpochMilli(file.lastModified()))
+                        val label = if (dur == null) whenSaved else "$whenSaved · ${(dur / 1000.0).format1()}s"
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(label)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = {
+                                    if (playing == file.absolutePath) {
+                                        player?.pause()
+                                        playing = null
+                                        return@Button
+                                    }
+                                    player?.release()
+                                    val next = MediaPlayer()
+                                    next.setDataSource(file.absolutePath)
+                                    next.setOnCompletionListener { playing = null }
+                                    next.prepare()
+                                    next.start()
+                                    player = next
+                                    playing = file.absolutePath
+                                }) { Text(if (playing == file.absolutePath) "pause" else "play") }
+                                OutlinedButton(onClick = {
+                                    if (playing == file.absolutePath) {
+                                        player?.release()
+                                        player = null
+                                        playing = null
+                                    }
+                                    recordings.delete(file)
+                                    files = recordings.list()
+                                }) { Text("delete") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
