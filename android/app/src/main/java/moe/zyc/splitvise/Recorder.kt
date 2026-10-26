@@ -34,6 +34,30 @@ class Recorder {
         recorder = rec
     }
 
+    fun pause() {
+        try {
+            recorder?.pause()
+        } catch (_: RuntimeException) {
+        }
+    }
+
+    fun resume() {
+        try {
+            recorder?.resume()
+        } catch (_: RuntimeException) {
+        }
+    }
+
+    /** 0..1, for a live level display. */
+    fun level(): Float {
+        val rec = recorder ?: return 0f
+        return try {
+            (rec.maxAmplitude / 32767f).coerceIn(0f, 1f)
+        } catch (_: RuntimeException) {
+            0f
+        }
+    }
+
     fun stop(): Int {
         val rec = recorder ?: return 0
         val elapsed = (System.currentTimeMillis() - startedAtMs).toInt().coerceAtLeast(0)
