@@ -13,7 +13,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,16 +29,31 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DockedSearchBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeFloatingActionButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -53,16 +67,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.time.Instant
@@ -71,16 +79,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-
-private val Ink = Color(0xFF000000)
-private val Card = Color(0xFF2A2A2E)
-private val Chip = Color(0xFF1C1C1E)
-private val Muted = Color(0xFF9A9AA2)
-private val Coral = Color(0xFFFF6F61)
-private val CoralCore = Color(0xFF6B2A24)
-private val StopFill = Color(0xFFF6D0CB)
-private val StopInk = Color(0xFF6B2A2A)
-private val PauseFill = Color(0xFF2A2A2E)
 
 class MainActivity : ComponentActivity() {
     private lateinit var prefs: Prefs
@@ -98,15 +96,11 @@ class MainActivity : ComponentActivity() {
         prefs = Prefs(this)
         recordings = LocalRecordings(File(filesDir, "recordings"))
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    background = Ink,
-                    surface = Ink,
-                    onBackground = Color.White,
-                    onSurface = Color.White,
-                ),
-            ) {
-                Surface(Modifier.fillMaxSize(), color = Ink) {
+            SplitviseTheme {
+                Surface(
+                    Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         App()
                     }
@@ -269,9 +263,7 @@ class MainActivity : ComponentActivity() {
                         item(key = "month-$month") {
                             Text(
                                 month,
-                                color = Color.White,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Medium,
+                                style = MaterialTheme.typography.titleLarge,
                                 modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
                             )
                         }
@@ -354,9 +346,10 @@ class MainActivity : ComponentActivity() {
                 Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(startedLabel, color = Color.White, fontSize = 20.sp)
-                Spacer(Modifier.weight(1f))
-            TrashButton(onClick = onDiscard)
+                Text(startedLabel, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDiscard) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Discard recording")
+                }
             }
             Waveform(
                 samples = samples,
@@ -369,22 +362,26 @@ class MainActivity : ComponentActivity() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
-                    Modifier.size(14.dp).clip(CircleShape).background(if (paused) Muted else Coral),
+                    Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (paused) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                        ),
                 )
                 Spacer(Modifier.width(12.dp))
-                Text(
-                    formatClock(tick),
-                    color = Color.White,
-                    fontSize = 40.sp,
-                    fontWeight = FontWeight.Medium,
-                )
+                Text(formatClock(tick), style = MaterialTheme.typography.displaySmall)
             }
             Spacer(Modifier.height(28.dp))
             Row(
                 Modifier.fillMaxWidth().padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Button(
+                FilledTonalButton(
                     onClick = {
                         paused = if (paused) {
                             recorder.resume()
@@ -395,21 +392,24 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     modifier = Modifier.weight(1f).height(72.dp),
-                    shape = RoundedCornerShape(36.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = PauseFill,
-                        contentColor = Color.White,
-                    ),
-                ) { Text(if (paused) "Resume" else "Pause", fontSize = 18.sp) }
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Icon(
+                        if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                        contentDescription = null,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (paused) "Resume" else "Pause")
+                }
                 Button(
                     onClick = onStop,
                     modifier = Modifier.weight(1f).height(72.dp),
-                    shape = RoundedCornerShape(36.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = StopFill,
-                        contentColor = StopInk,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     ),
-                ) { Text("Stop", fontSize = 18.sp) }
+                ) { Text("Stop") }
             }
         }
     }
@@ -448,32 +448,32 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchRow(query: String, onQuery: (String) -> Unit, onOpenSettings: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Row(
-            Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(24.dp)).background(Chip).padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicTextField(
-                value = query,
-                onValueChange = onQuery,
-                modifier = Modifier.weight(1f),
-                textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
-                cursorBrush = SolidColor(Color.White),
-                singleLine = true,
-                decorationBox = { inner ->
-                    if (query.isEmpty()) Text("Search recordings", color = Muted, fontSize = 16.sp)
-                    inner()
-                },
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Box(
-            Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF5C4B8A)).clickable(onClick = onOpenSettings),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("S", color = Color.White, fontWeight = FontWeight.Medium)
+        DockedSearchBar(
+            inputField = {
+                SearchBarDefaults.InputField(
+                    query = query,
+                    onQueryChange = onQuery,
+                    onSearch = {},
+                    expanded = false,
+                    onExpandedChange = {},
+                    placeholder = { Text("Search recordings") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                )
+            },
+            expanded = false,
+            onExpandedChange = {},
+            modifier = Modifier.weight(1f),
+            colors = SearchBarDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+        ) {}
+        Spacer(Modifier.width(4.dp))
+        IconButton(onClick = onOpenSettings) {
+            Icon(Icons.Filled.Settings, contentDescription = "Settings")
         }
     }
 }
@@ -487,45 +487,62 @@ private fun RecordingCard(
     playing: Boolean,
     onPlay: () -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Card).padding(16.dp),
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text(
-                if (playing) "❚❚" else "▶",
-                color = Color.White,
-                fontSize = 18.sp,
-                modifier = Modifier.clickable(onClick = onPlay).padding(8.dp),
-            )
-        }
-        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(subtitle, color = Muted, modifier = Modifier.weight(1f))
-            Text(duration, color = Muted)
-        }
-        Spacer(Modifier.height(14.dp))
-        Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF4A4A50))) {
-            Box(
-                Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp).background(Color(0xFFE4E4EA)),
-            )
-        }
+        ListItem(
+            headlineContent = { Text(title, style = MaterialTheme.typography.titleLarge) },
+            supportingContent = { Text(subtitle) },
+            trailingContent = {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        duration,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    IconButton(onClick = onPlay) {
+                        Icon(
+                            if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (playing) "Pause" else "Play",
+                        )
+                    }
+                }
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        )
+        LinearProgressIndicator(
+            progress = { progress.coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            trackColor = MaterialTheme.colorScheme.outline,
+        )
     }
 }
 
 @Composable
 private fun RecordButton(modifier: Modifier, onClick: () -> Unit) {
-    Box(
-        modifier.size(84.dp).clip(CircleShape).background(Coral).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+    LargeFloatingActionButton(
+        onClick = onClick,
+        modifier = modifier,
+        shape = CircleShape,
+        containerColor = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
     ) {
-        Box(Modifier.size(28.dp).clip(CircleShape).background(CoralCore))
+        Box(
+            Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onPrimary),
+        )
     }
 }
 
 @Composable
 private fun Waveform(samples: List<Float>, modifier: Modifier) {
     Canvas(
-        modifier.clip(RoundedCornerShape(28.dp)).background(Color(0xFF141416)),
+        modifier
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {
         val count = 48
         val step = size.width / count
@@ -540,31 +557,6 @@ private fun Waveform(samples: List<Float>, modifier: Modifier) {
                 center = Offset(step * i + step / 2f, mid),
             )
         }
-    }
-}
-
-@Composable
-private fun TrashButton(onClick: () -> Unit) {
-    Canvas(
-        Modifier.size(28.dp).clickable(onClick = onClick).padding(2.dp),
-    ) {
-        val ink = Color(0xFFB0B0B6)
-        drawRoundRect(
-            color = ink,
-            topLeft = Offset(size.width * 0.22f, size.height * 0.28f),
-            size = Size(size.width * 0.56f, size.height * 0.58f),
-            cornerRadius = CornerRadius(2.dp.toPx()),
-        )
-        drawRect(
-            color = ink,
-            topLeft = Offset(size.width * 0.15f, size.height * 0.2f),
-            size = Size(size.width * 0.7f, size.height * 0.06f),
-        )
-        drawRect(
-            color = ink,
-            topLeft = Offset(size.width * 0.38f, size.height * 0.08f),
-            size = Size(size.width * 0.24f, size.height * 0.1f),
-        )
     }
 }
 
