@@ -8,6 +8,7 @@ import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -90,7 +91,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         prefs = Prefs(this)
         recordings = LocalRecordings(File(filesDir, "recordings"))
         setContent {
@@ -102,8 +106,10 @@ class MainActivity : ComponentActivity() {
                     onSurface = Color.White,
                 ),
             ) {
-                Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = Ink) {
-                    App()
+                Surface(Modifier.fillMaxSize(), color = Ink) {
+                    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                        App()
+                    }
                 }
             }
         }
